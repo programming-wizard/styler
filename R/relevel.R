@@ -4,12 +4,13 @@
 #' Flatten some token in the nested parse table based on operators
 #'
 #' Certain tokens are not placed optimally in the nested parse data with
-#'   [compute_parse_data_nested()]. For example, the token of arithmetic
-#'   operations 1 + 1 + 1 should all be on the same level of nesting since
-#'   the indention is the same for all but the first two terminals. Setting the
-#'   indention correctly is easier to achieve if they are put on the same level
-#'   of nesting.
+#' [compute_parse_data_nested()]. For example, the token of arithmetic
+#' operations 1 + 1 + 1 should all be on the same level of nesting since the
+#' indention is the same for all but the first two terminals. Setting the
+#' indention correctly is easier to achieve if they are put on the same level of
+#' nesting.
 #' @param pd_nested A nested parse table to partially flatten.
+#' @keywords internal
 flatten_operators <- function(pd_nested) {
   pd_nested %>%
     post_visit(c(flatten_operators_one))
@@ -17,14 +18,15 @@ flatten_operators <- function(pd_nested) {
 
 #' Flatten one level of nesting with its child
 #'
-#' Flattening is done in two ways. We can flatten a parse table by moving
-#'   the left hand token of an operator one level up. Or doing that with the
-#'   right hand token.
+#' Flattening is done in two ways. We can flatten a parse table by moving the
+#' left hand token of an operator one level up. Or doing that with the right
+#' hand token.
 #' @param pd_nested A nested parse table.
 #' @include token-define.R
+#' @keywords internal
 flatten_operators_one <- function(pd_nested) {
   pd_token_left <- c(special_token, math_token, "'$'")
-  pd_token_right <- c(special_token, "LEFT_ASSIGN",  "'+'", "'-'")
+  pd_token_right <- c(special_token, "LEFT_ASSIGN", "'+'", "'-'")
   bound <- pd_nested %>%
     flatten_pd(pd_token_left, left = TRUE) %>%
     flatten_pd(pd_token_right, left = FALSE)
@@ -46,6 +48,7 @@ flatten_operators_one <- function(pd_nested) {
 #'   occur in the child in order to flatten the parse table.
 #' @param left Flag that indicates whether the parse table should be flattened
 #'   from left or from right.
+#' @keywords internal
 flatten_pd <- function(pd_nested, token, child_token = token, left = TRUE) {
   token_pos <- which(pd_nested$token[-1] %in% token) + 1
   if (length(token_pos) == 0) return(pd_nested)
@@ -61,6 +64,7 @@ flatten_pd <- function(pd_nested, token, child_token = token, left = TRUE) {
 #' according to the appearance of the tokens.
 #' @param pd_nested A nested parse table.
 #' @param pos The position of the child to bind.
+#' @keywords internal
 bind_with_child <- function(pd_nested, pos) {
   pd_nested %>%
     slice(-pos) %>%
@@ -73,6 +77,7 @@ bind_with_child <- function(pd_nested, pos) {
 #' Takes a parse table and wraps it in a new parse table that contains the
 #' expression as a child.
 #' @param pd A parse table.
+#' @keywords internal
 wrap_expr_in_expr <- function(pd) {
   expr <- create_tokens(
     "expr", "",
@@ -118,6 +123,7 @@ wrap_expr_in_expr <- function(pd) {
 #'   y <- TRUE else
 #'   y <- FALSE",
 #' )
+#' @keywords internal
 relocate_eq_assign <- function(pd) {
   pd %>%
     post_visit(c(relocate_eq_assign_nest))
@@ -144,7 +150,7 @@ relocate_eq_assign <- function(pd) {
 #' Please refer to the section 'Examples' in [relocate_eq_assign()] for details.
 #' @param pd A parse table.
 #' @importFrom rlang seq2
-#' @importFrom purrr map_dfr
+#' @keywords internal
 relocate_eq_assign_nest <- function(pd) {
   idx_eq_assign <- which(pd$token == "EQ_ASSIGN")
   if (length(idx_eq_assign) > 0) {
@@ -163,9 +169,10 @@ relocate_eq_assign_nest <- function(pd) {
 #' to the `EQ_ASSIGN` token occurring before them, except the token right before
 #' `EQ_ASSING` already belongs to the `EQ_ASSING` after it.
 #' @param pd A parse table.
+#' @keywords internal
 find_block_id <- function(pd) {
   idx_eq_assign <- which(pd$token == "EQ_ASSIGN")
-  eq_belongs_to_block <- c(0, cumsum(diff(idx_eq_assign)) > 2)
+  eq_belongs_to_block <- c(0, cumsum(diff(idx_eq_assign) > 2))
 
   empty_seq <- rep(0, nrow(pd))
   empty_seq[idx_eq_assign - 1] <- eq_belongs_to_block
@@ -179,10 +186,11 @@ find_block_id <- function(pd) {
 #' assignment expression. Note that one assignment can include multiple
 #' assignment operators such as "a = b = c".
 #' @param pd A parse table with one assignment expression to relocate.
+#' @keywords internal
 relocate_eq_assign_one <- function(pd) {
   idx_eq_assign <- which(pd$token == "EQ_ASSIGN")
   eq_ind <- seq2(idx_eq_assign[1] - 1L, last(idx_eq_assign) + 1L)
-  eq_expr <- pd[eq_ind,] %>%
+  eq_expr <- pd[eq_ind, ] %>%
     wrap_expr_in_expr() %>%
     add_line_col_to_wrapped_expr() %>%
     remove_attributes(c(
@@ -191,7 +199,7 @@ relocate_eq_assign_one <- function(pd) {
     ))
   eq_expr$id <- NA
   eq_expr$parent <- NA
-  non_eq_expr <- pd[-eq_ind,]
+  non_eq_expr <- pd[-eq_ind, ]
   pd <- bind_rows(eq_expr, non_eq_expr) %>%
     arrange(pos_id)
   pd
@@ -200,6 +208,7 @@ relocate_eq_assign_one <- function(pd) {
 #' Adds line and col information to an expression from its child
 #'
 #' @param pd A parse table.
+#' @keywords internal
 add_line_col_to_wrapped_expr <- function(pd) {
   if (nrow(pd) > 1) stop("pd must be a wrapped expression that has one row.")
   pd$line1 <- pd$child[[1]]$line1[1]

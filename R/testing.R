@@ -21,6 +21,7 @@
 #'   their name, i.e. just the one before out.R.
 #' @inheritParams transform_and_check
 #' @importFrom purrr flatten_chr pwalk map
+#' @keywords internal
 test_collection <- function(test, sub_test = NULL,
                             write_back = TRUE,
                             write_tree = NA,
@@ -33,9 +34,11 @@ test_collection <- function(test, sub_test = NULL,
     "in\\.R(?:|md)$"
   )
 
-  in_names <- list.files(file.path(path),
-                          pattern = pattern,
-                          full.names = FALSE)
+  in_names <- list.files(
+    file.path(path),
+    pattern = pattern,
+    full.names = FALSE
+  )
 
   if (length(in_names) < 1) stop("no items to check")
 
@@ -47,11 +50,12 @@ test_collection <- function(test, sub_test = NULL,
   out_trees <- construct_tree(in_items)
 
   pwalk(list(in_items, out_items, in_names, out_names, out_trees),
-       transform_and_check,
-       transformer = transformer,
-       write_back = write_back,
-       write_tree = write_tree,
-       ...)
+    transform_and_check,
+    transformer = transformer,
+    write_back = write_back,
+    write_tree = write_tree,
+    ...
+  )
 }
 
 #' Construct *-out.R from a *-in.R
@@ -62,6 +66,7 @@ test_collection <- function(test, sub_test = NULL,
 #' @examples
 #' styler:::construct_out(c("path/to/file/first-in.R",
 #'  "path/to/file/first-extended-in.R"))
+#' @keywords internal
 construct_out <- function(in_paths) {
   gsub("\\-.*([.]R(?:|md))$", "\\-out\\1", in_paths)
 }
@@ -70,6 +75,7 @@ construct_out <- function(in_paths) {
 #'
 #' @param in_paths Character vector of *-in.R files.
 #' @param suffix Suffix for the tree object.
+#' @keywords internal
 construct_tree <- function(in_paths, suffix = "_tree") {
   gsub("\\.R$", suffix, in_paths)
 }
@@ -91,12 +97,12 @@ construct_tree <- function(in_paths, suffix = "_tree") {
 #' @param ... Parameters passed to transformer function.
 #' @param out_tree Name of tree file if written out.
 #' @importFrom utils write.table
+#' @keywords internal
 transform_and_check <- function(in_item, out_item,
                                 in_name = in_item, out_name = out_item,
                                 transformer, write_back,
                                 write_tree = NA,
                                 out_tree = "_tree", ...) {
-
   write_tree <- set_arg_write_tree(write_tree)
   read_in <- enc::read_lines_enc(in_item)
   if (write_tree) {
@@ -114,11 +120,15 @@ transform_and_check <- function(in_item, out_item,
   )
 
   if (transformed) {
-    warning(in_name, " was different from ", out_name,
-            immediate. = TRUE, call. = FALSE)
+    warning(
+      in_name, " was different from ", out_name,
+      immediate. = TRUE, call. = FALSE
+    )
   } else {
-    message(in_name, " was identical to ", out_name,
-            immediate. = TRUE, call. = FALSE)
+    message(
+      in_name, " was identical to ", out_name,
+      immediate. = TRUE, call. = FALSE
+    )
   }
 }
 
@@ -136,22 +146,23 @@ transform_and_check <- function(in_item, out_item,
 #'   As inputs for [test_collection()], we can also use top-level functions such
 #'   as [style_text()].
 #' @rdname test_transformer
+#' @keywords internal
 NULL
 
 #' @describeIn test_transformer Nest and unnest `text` without applying any
 #'   transformations but remove EOL spaces and indention due to the way the
 #'   serialization is set up.
+#' @keywords internal
 style_empty <- function(text) {
   transformers <- list(
     # transformer functions
-    initialize = initialize_attributes,
-    line_break = NULL,
-    space      = NULL,
-    token      = NULL,
-
+    initialize = default_style_guide_attributes,
+    line_break        = NULL,
+    space             = NULL,
+    token             = NULL,
     # transformer options
     use_raw_indention = FALSE,
-    reindention = specify_reindention(),
+    reindention       = specify_reindention(),
     NULL
   )
   transformed_text <- parse_transform_serialize(text, transformers)
@@ -159,30 +170,29 @@ style_empty <- function(text) {
 }
 
 #' @describeIn test_transformer Transformations for indention based on operators
+#' @keywords internal
 style_op <- function(text) {
-
   transformers <- list(
     # transformer functions
-    initialize = initialize_attributes,
-    line_break = NULL,
-    space      = partial(indent_op, indent_by = 2),
-    token      = NULL,
-
+    initialize        = default_style_guide_attributes,
+    line_break        = NULL,
+    space             = partial(indent_op, indent_by = 2),
+    token             = NULL,
     # transformer options
     use_raw_indention = FALSE,
-    reindention = specify_reindention(),
+    reindention       = specify_reindention(),
     NULL
   )
 
   transformed_text <- parse_transform_serialize(text, transformers)
   transformed_text
-
 }
 
 
 #' Create the path to a test that file
 #' @param ... Arguments passed to [file.path()] to construct the path after
 #'   ".../tests/testthat/"
+#' @keywords internal
 testthat_file <- function(...) {
   file.path(rprojroot::find_testthat_root_file(), ...)
 }
@@ -193,20 +203,13 @@ testthat_file <- function(...) {
 #' Takes the path to a file as input and returns the path where the temporary
 #' file is stored. Don't forget to unlink once you are done.
 #' @param path_perm The path of the file to copy.
+#' @keywords internal
 copy_to_tempdir <- function(path_perm = testthat_file()) {
   dir <- tempfile("styler")
   dir.create(dir)
   file.copy(path_perm, dir)
   base <- basename(path_perm)
   file.path(dir, base)
-}
-
-
-stop_insufficient_r_version <- function() {
-  stop(paste0(
-    "Can't write tree with R version ", getRversion(),
-    "since data.tree not available. Needs at least R version 3.2."
-  ), call. = FALSE)
 }
 
 #' Generate a comprehensive collection test cases for comment / insertion
@@ -218,10 +221,12 @@ stop_insufficient_r_version <- function() {
 #' test cases to *-in.R files that can be tested with [test_collection()]. Note
 #' that a few of the test cases are invalid and need to be removed / commented
 #' out manually.
+#' @keywords internal
 generate_test_samples <- function() {
   gen <- function(x) {
-    if (length(x) == 0) ""
-    else {
+    if (length(x) == 0) {
+      ""
+    } else {
       c(
         paste0(x[1], gen(x[-1])),
         paste0(x[1], " # comment\n", paste(x[-1], collapse = ""))
@@ -239,10 +244,11 @@ generate_test_samples <- function() {
     collapse(gen(c("if", "(", "TRUE", ")", "NULL", " else", " NULL"))),
     file = "tests/testthat/insertion_comment_interaction/if_else-in.R"
   )
-  cat(collapse(gen(c(
-    "if", "(", "TRUE", ")", "NULL", " else", " if", "(", "FALSE", ")", "NULL",
-    " else", " NULL"))),
+  cat(
+    collapse(gen(c(
+      "if", "(", "TRUE", ")", "NULL", " else", " if", "(", "FALSE", ")", "NULL",
+      " else", " NULL"
+    ))),
     file = "tests/testthat/insertion_comment_interaction/if_else_if_else-in.R"
   )
 }
-

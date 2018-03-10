@@ -1,4 +1,5 @@
 #' @include token-define.R
+#' @keywords internal
 add_space_around_op <- function(pd_flat) {
   op_after <- pd_flat$token %in% op_token
   op_before <- lead(op_after, default = FALSE)
@@ -10,6 +11,7 @@ add_space_around_op <- function(pd_flat) {
 }
 
 #' @include token-define.R
+#' @keywords internal
 set_space_around_op <- function(pd_flat) {
   op_after <- pd_flat$token %in% op_token
   if (!any(op_after)) return(pd_flat)
@@ -20,16 +22,19 @@ set_space_around_op <- function(pd_flat) {
 }
 
 #' Style spacing around math tokens
-#' @inheritParams style_space_around_math_token_one
+#' @inheritParams style_space_around_token
 #' @param one Character vector with tokens that should be surrounded by at
 #'   least one space (depending on `strict = TRUE` in the styling functions
 #'   [style_text()] and friends). See 'Examples'.
 #' @param zero Character vector of tokens that should be surrounded with zero
 #'   spaces.
+#' @keywords internal
 style_space_around_math_token <- function(strict, zero, one, pd_flat) {
+  # We remove spaces for zero (e.g., around ^ in the tidyverse style guide)
+  # even for strict = FALSE to be consistent with the : operator
   pd_flat %>%
-    style_space_around_math_token_one(strict, zero, 0L) %>%
-    style_space_around_math_token_one(strict, one, 1L)
+    style_space_around_token(strict = TRUE, zero, 0L) %>%
+    style_space_around_token(strict = strict, one, 1L)
 }
 
 #' Set spacing of token to a certain level
@@ -41,7 +46,8 @@ style_space_around_math_token <- function(strict, zero, one, pd_flat) {
 #' @param tokens Character vector with tokens that should be styled.
 #' @param level Scalar indicating the amount of spaces that should be inserted
 #'   around the `tokens`.
-style_space_around_math_token_one <- function(pd_flat, strict, tokens, level) {
+#' @keywords internal
+style_space_around_token <- function(pd_flat, strict, tokens, level) {
   op_after <- pd_flat$token %in% tokens
   op_before <- lead(op_after, default = FALSE)
   idx_before <- op_before & (pd_flat$newlines == 0L)
@@ -57,13 +63,14 @@ style_space_around_math_token_one <- function(pd_flat, strict, tokens, level) {
 
 # depreciated!
 #' @include token-define.R
+#' @keywords internal
 remove_space_after_unary_pm <- function(pd_flat) {
   op_pm <- c("'+'", "'-'")
   op_pm_unary_after <- c(op_pm, op_token, "'('", "','")
 
   pm_after <- pd_flat$token %in% op_pm
   pd_flat$spaces[pm_after & (pd_flat$newlines == 0L) &
-                   (lag(pd_flat$token) %in% op_pm_unary_after)] <- 0L
+    (lag(pd_flat$token) %in% op_pm_unary_after)] <- 0L
   pd_flat
 }
 
@@ -84,7 +91,8 @@ fix_quotes <- function(pd_flat) {
     vapply(
       lapply(pd_flat$text[str_const][str_const_change], parse_text),
       deparse,
-      character(1L))
+      character(1L)
+    )
   pd_flat
 }
 
@@ -144,7 +152,7 @@ remove_space_before_comma <- function(pd_flat) {
   comma_after <- pd_flat$token == "','"
   if (!any(comma_after)) return(pd_flat)
   comma_before <- lead(comma_after, default = FALSE)
-  idx <- comma_before  & (pd_flat$newlines == 0L)
+  idx <- comma_before & (pd_flat$newlines == 0L)
   pd_flat$spaces[idx] <- 0L
   pd_flat
 }
@@ -153,11 +161,12 @@ remove_space_before_comma <- function(pd_flat) {
 #' Set space between levels of nesting
 #'
 #' With the nested approach, certain rules do not have an effect anymore because
-#'   of the nature of the nested structure. Setting spacing before curly
-#'   brackets in for / if / while statements and function declarations will be
-#'   such a case since a curly bracket is always at the first position in a
-#'   parse table, so spacing cannot be set after the previous token.
+#' of the nature of the nested structure. Setting spacing before curly
+#' brackets in for / if / while statements and function declarations will be
+#' such a case since a curly bracket is always at the first position in a parse
+#' table, so spacing cannot be set after the previous token.
 #' @param pd_flat A flat parse table.
+#' @keywords internal
 set_space_between_levels <- function(pd_flat) {
   if (pd_flat$token[1] %in% c("FUNCTION", "IF", "WHILE")) {
     index <- pd_flat$token == "')'" & pd_flat$newlines == 0L
@@ -172,20 +181,22 @@ set_space_between_levels <- function(pd_flat) {
 #' Start comments with a space
 #'
 #' Forces comments to start with a space, that is, after the regular expression
-#'   "^#+'*", at least one space must follow if the comment is *non-empty*, i.e
-#'   there is not just spaces within the comment. Multiple spaces may be legit
-#'   for indention in some situations.
+#' "^#+'*", at least one space must follow if the comment is *non-empty*, i.e
+#' there is not just spaces within the comment. Multiple spaces may be legit for
+#' indention in some situations.
 #' @param pd A parse table.
 #' @param force_one Whether or not to force one space or allow multiple spaces
 #'   after the regex "^#+'*".
 #' @importFrom purrr map_chr
+#' @keywords internal
 start_comments_with_space <- function(pd, force_one = FALSE) {
-  comment_pos <- pd$token == "COMMENT"
+  comment_pos <- is_comment(pd) & !is_shebang(pd) & !is_code_chunk_header(pd)
   if (!any(comment_pos)) return(pd)
 
-  comments <- rematch2::re_match(pd$text[comment_pos],
-    "^(?<prefix>#+'*)(?<space_after_prefix> *)(?<text>.*)$")
-
+  comments <- rematch2::re_match(
+    pd$text[comment_pos],
+    "^(?<prefix>#+['\\*]*)(?<space_after_prefix> *)(?<text>.*)$"
+  )
   comments$space_after_prefix <- nchar(
     comments$space_after_prefix, type = "width"
   )
@@ -238,7 +249,7 @@ set_space_after_bang_bang <- function(pd_flat) {
     (pd_flat$newlines == 0L) &
     (pd_flat$token_before == "'!'")
 
-  pd_flat$spaces[last_bang] <- 1L
+  pd_flat$spaces[last_bang] <- 0L
   pd_flat
 }
 
@@ -271,9 +282,9 @@ remove_space_around_colons <- function(pd_flat) {
 
 #' Set space between EQ_SUB and "','"
 #' @param pd A parse table.
+#' @keywords internal
 set_space_between_eq_sub_and_comma <- function(pd) {
   op_before <- which(pd$token == "EQ_SUB" & lead(pd$token == "','"))
   pd$spaces[op_before] <- 1L
   pd
-
 }

@@ -3,8 +3,8 @@
 #'
 #' @param pd_nested A nested parse table.
 #' @name update_indention_ref
+#' @keywords internal
 NULL
-
 
 #' @describeIn update_indention_ref Updates the reference pos_id for all
 #'   tokens in `pd_nested` if `pd_nested` contains a function call. Tokens that
@@ -25,12 +25,13 @@ NULL
 #' }
 #' @importFrom purrr map_lgl
 #' @importFrom rlang seq2
+#' @keywords internal
 update_indention_ref_fun_call <- function(pd_nested) {
   current_is_call <- pd_nested$token_before[2] %in% c("SYMBOL_FUNCTION_CALL")
   non_comment <- which(pd_nested$token != "COMMENT")
   first_non_comment_after_call <- non_comment[non_comment > 2][1]
   if ((current_is_call) &&
-      pd_nested$lag_newlines[first_non_comment_after_call] == 0) {
+    pd_nested$lag_newlines[first_non_comment_after_call] == 0) {
     candidates <- seq2(3, nrow(pd_nested) - 1)
 
     child_is_call <- map_lgl(pd_nested$child, is_function_call)
@@ -57,9 +58,10 @@ update_indention_ref_fun_call <- function(pd_nested) {
 #' }
 #' }
 #' @importFrom rlang seq2
+#' @keywords internal
 update_indention_ref_fun_dec <- function(pd_nested) {
   if (pd_nested$token[1] == "FUNCTION") {
-    seq <- seq2(3, nrow(pd_nested) - 1)
+    seq <- seq2(3, nrow(pd_nested) - 2)
     pd_nested$indention_ref_pos_id[seq] <- pd_nested$pos_id[2]
   }
   pd_nested
@@ -72,6 +74,7 @@ update_indention_ref_fun_dec <- function(pd_nested) {
 #' is applied to all token that inherit from a reference token sequentially,
 #' i.e. by looping over the target tokens.
 #' @inheritParams apply_ref_indention_one
+#' @keywords internal
 apply_ref_indention <- function(flattened_pd) {
   target_tokens <- which(flattened_pd$pos_id %in% flattened_pd$indention_ref_pos_id)
   flattened_pd <- reduce(
@@ -91,16 +94,14 @@ apply_ref_indention <- function(flattened_pd) {
 #' @param flattened_pd A flattened parse table
 #' @param target_token The index of the token from which the indention level
 #'   should be applied to other tokens.
+#' @keywords internal
 apply_ref_indention_one <- function(flattened_pd, target_token) {
-  token_points_to_ref <-
-    flattened_pd$indention_ref_pos_id == flattened_pd$pos_id[target_token]
-  first_token_on_line <- flattened_pd$lag_newlines > 0L
-  token_to_update <- which(token_points_to_ref & first_token_on_line)
 
+  token_to_update <- find_tokens_to_update(flattened_pd, target_token)
   # udate spaces
   copied_spaces <- flattened_pd$col2[target_token]
   old_spaces <- flattened_pd$lag_spaces[token_to_update[1]]
-  shift <- copied_spaces - old_spaces
+  shift <- copied_spaces
   flattened_pd$lag_spaces[token_to_update] <-
     flattened_pd$lag_spaces[token_to_update] + shift
 
@@ -109,10 +110,33 @@ apply_ref_indention_one <- function(flattened_pd, target_token) {
   flattened_pd$col1[cols_to_update] <- flattened_pd$col1[cols_to_update] + shift
   flattened_pd$col2[cols_to_update] <- flattened_pd$col2[cols_to_update] + shift
   flattened_pd
-
 }
 
-
+#' Find the tokens to update when applying a reference indention
+#'
+#' Given a target token and a flattened parse table, the token for which the
+#' spacing information needs to be updated are computed. Since indention is
+#' already embedded in the column `lag_spaces`, only tokens at the beginning of
+#' a line are of concern.
+#' @param flattened_pd A flattened parse table.
+#' @inheritParams apply_ref_indention_one
+#' @seealso apply_ref_indention_one()
+#' @examples
+#' style_text("function(a =
+#'   b,
+#'   dd
+#' ) {}", scope = "indention")
+#' style_text("function(a,
+#'   b,
+#'   dd
+#' ) {}", scope = "indention")
+#' @keywords internal
+find_tokens_to_update <- function(flattened_pd, target_token) {
+  token_points_to_ref <-
+    flattened_pd$indention_ref_pos_id == flattened_pd$pos_id[target_token]
+  first_token_on_line <- flattened_pd$lag_newlines > 0L
+  which(token_points_to_ref & first_token_on_line)
+}
 
 
 #' Set indention of tokens that match regex
@@ -130,17 +154,18 @@ apply_ref_indention_one <- function(flattened_pd, target_token) {
 #' @return A flattened parse table with indention set to `target_indention` for
 #'   the tokens that match `regex.`
 #' @importFrom purrr map flatten_int
+#' @keywords internal
 set_regex_indention <- function(flattened_pd,
-                                  pattern,
-                                  target_indention = 0,
-                                  comments_only = TRUE) {
+                                pattern,
+                                target_indention = 0,
+                                comments_only = TRUE) {
   if (comments_only) {
     cond <- which(
       (flattened_pd$token == "COMMENT") & (flattened_pd$lag_newlines > 0)
     )
     if (length(cond) < 1) return(flattened_pd)
-    to_check <- flattened_pd[cond,]
-    not_to_check <- flattened_pd[-cond,]
+    to_check <- flattened_pd[cond, ]
+    not_to_check <- flattened_pd[-cond, ]
   } else {
     to_check <- flattened_pd
     not_to_check <- NULL

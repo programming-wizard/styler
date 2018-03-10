@@ -1,5 +1,6 @@
 a <- function(x, #
-              y) {
+              y
+              ) {
   x - 1
 }
 
@@ -12,6 +13,6 @@ a <- function(x, #
 
 a <- function(x, #
               y #
-            ) { # FIXME: Move to the same indention level as a
+            ) {
   y
 }

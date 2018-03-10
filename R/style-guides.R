@@ -5,6 +5,7 @@
 #' The available style guides are:
 #' * the tidyverse style guide (see [tidyverse_style()]).
 #' @name style_guides
+#' @keywords internal
 NULL
 
 
@@ -46,6 +47,7 @@ NULL
 #' @family style_guides
 #' @examples
 #' style_text("call( 1)", style = tidyverse_style, scope = "spaces")
+#' style_text("call( 1)", transformers = tidyverse_style(strict = TRUE))
 #' style_text(c("ab <- 3", "a  <-3"), strict = FALSE) # keeps alignment of "<-"
 #' style_text(c("ab <- 3", "a  <-3"), strict = TRUE) # drops alignment of "<-"
 #' @importFrom purrr partial
@@ -56,86 +58,112 @@ tidyverse_style <- function(scope = "tokens",
                             start_comments_with_one_space = FALSE,
                             reindention = tidyverse_reindention(),
                             math_token_spacing = tidyverse_math_token_spacing()) {
-
   scope <- character_to_ordered(
     scope,
     c("none", "spaces", "indention", "line_breaks", "tokens")
   )
 
-  space_manipulators <- if (scope >= "spaces")
+  space_manipulators <- if (scope >= "spaces") {
     lst(
-      partial(indent_braces, indent_by = indent_by),
-      partial(indent_op, indent_by = indent_by),
-      partial(indent_eq_sub, indent_by = indent_by),
-      partial(indent_without_paren, indent_by = indent_by),
-
+      indent_braces = partial(indent_braces, indent_by = indent_by),
+      unindent_fun_dec,
+      indent_op = partial(indent_op, indent_by = indent_by),
+      indent_eq_sub = partial(indent_eq_sub, indent_by = indent_by),
+      indent_without_paren = partial(indent_without_paren,
+        indent_by = indent_by
+      ),
       fix_quotes,
       remove_space_before_closing_paren,
-      if (strict) remove_space_before_opening_paren else identity,
+      remove_space_before_opening_paren = if (strict) remove_space_before_opening_paren,
       add_space_after_for_if_while,
       add_space_before_brace,
       remove_space_before_comma,
-      partial(
+      style_space_around_math_token = partial(
         style_space_around_math_token, strict,
         math_token_spacing$zero,
         math_token_spacing$one
       ),
-      if (strict) set_space_around_op else add_space_around_op,
-      if (strict) set_space_after_comma else add_space_after_comma,
+      style_space_around_tilde = partial(
+        style_space_around_token, strict = strict, tokens = "'~'", level = 1L),
+      spacing_around_op = if (strict) {
+        set_space_around_op
+      }else {
+        add_space_around_op
+      },
+      spacing_around_comma = if (strict) {
+        set_space_after_comma
+      } else {
+        add_space_after_comma
+      },
       remove_space_after_opening_paren,
       remove_space_after_excl,
       set_space_after_bang_bang,
       remove_space_before_dollar,
       remove_space_after_fun_dec,
       remove_space_around_colons,
-      partial(start_comments_with_space,
-              force_one = start_comments_with_one_space),
-
+      start_comments_with_space = partial(start_comments_with_space,
+        force_one = start_comments_with_one_space
+      ),
       remove_space_after_unary_pm_nested,
-      if (strict) set_space_before_comments else add_space_before_comments,
+      spacing_before_comments = if (strict) {
+        set_space_before_comments
+      } else {
+        add_space_before_comments
+      },
       set_space_between_levels,
       set_space_between_eq_sub_and_comma
     )
+  }
 
   use_raw_indention <- scope < "indention"
 
-  line_break_manipulators <- if (scope >= "line_breaks")
+  line_break_manipulators <- if (scope >= "line_breaks") {
     lst(
       remove_line_break_before_curly_opening,
-      if (strict) remove_line_break_before_round_closing_after_curly else identity,
-      if (strict) remove_line_break_before_round_closing_fun_dec else identity,
-      partial(style_line_break_around_curly, strict),
-      if (strict) partial(
-        set_line_break_after_opening_if_call_is_multi_line,
-        except_token_after = "COMMENT",
-        except_text_before = c("switch", "ifelse", "if_else")
-      ) else identity,
-      if (strict) partial(
-        set_line_break_before_closing_call, except_token_before = "COMMENT"
-      ) else identity,
+      remove_line_break_before_round_closing_after_curly =
+        if (strict) remove_line_break_before_round_closing_after_curly,
+      remove_line_break_before_round_closing_fun_dec =
+        if (strict) remove_line_break_before_round_closing_fun_dec,
+      style_line_break_around_curly = partial(style_line_break_around_curly,
+        strict
+      ),
+      set_line_break_after_opening_if_call_is_multi_line = if (strict)
+        partial(
+          set_line_break_after_opening_if_call_is_multi_line,
+          except_token_after = "COMMENT",
+          except_text_before = c("switch", "ifelse", "if_else")
+        ),
+      set_line_break_before_closing_call = if (strict) {
+        partial(
+          set_line_break_before_closing_call, except_token_before = "COMMENT"
+        )
+      },
       remove_line_break_in_empty_fun_call,
       add_line_break_after_pipe
     )
+  }
 
-  token_manipulators <- if (scope >= "tokens")
+  token_manipulators <- if (scope >= "tokens") {
     lst(
       force_assignment_op,
       resolve_semicolon,
       add_brackets_in_pipe,
       remove_terminal_token_before_and_after,
-      if (strict) wrap_if_else_multi_line_in_curly else identity
+      wrap_if_else_multi_line_in_curly =
+        if (strict) wrap_if_else_multi_line_in_curly
     )
+  }
 
 
   indention_modifier <-
-    c(
-      update_indention_ref_fun_dec,
-      NULL
+    lst(
+      update_indention_ref_fun_dec =
+        if (scope >= "indention") update_indention_ref_fun_dec
     )
 
   create_style_guide(
     # transformer functions
-    initialize        = initialize_attributes,
+    initialize        = default_style_guide_attributes,
     line_break        = line_break_manipulators,
     space             = space_manipulators,
     token             = token_manipulators,
@@ -153,8 +181,8 @@ tidyverse_style <- function(scope = "tokens",
 #' transformer function corresponds to one styling rule. The output of this
 #' function can be used as an argument for \code{style} in top level functions
 #' like [style_text()] and friends.
-#' @param initialize A function that initializes various variables on each
-#'   level of nesting.
+#' @param initialize The bare name of a function that initializes various
+#'   variables on each level of nesting.
 #' @param line_break A list of transformer functions that manipulate line_break
 #'   information.
 #' @param space A list of transformer functions that manipulate spacing
@@ -165,8 +193,19 @@ tidyverse_style <- function(scope = "tokens",
 #'   should be used.
 #' @param reindention A list of parameters for regex re-indention, most
 #'   conveniently constructed using [specify_reindention()].
+#' @examples
+#' set_line_break_before_curly_opening <- function(pd_flat) {
+#'   op <- pd_flat$token %in% "'{'"
+#'   pd_flat$lag_newlines[op] <- 1L
+#'   pd_flat
+#' }
+#' set_line_break_before_curly_opening_style <- function() {
+#'   create_style_guide(line_break = tibble::lst(set_line_break_before_curly_opening))
+#' }
+#' style_text("a <- function(x) { x }", style = set_line_break_before_curly_opening_style)
+#' @importFrom purrr compact
 #' @export
-create_style_guide <- function(initialize = initialize_attributes,
+create_style_guide <- function(initialize = default_style_guide_attributes,
                                line_break = NULL,
                                space = NULL,
                                token = NULL,
@@ -175,7 +214,7 @@ create_style_guide <- function(initialize = initialize_attributes,
                                reindention = tidyverse_reindention()) {
   lst(
     # transformer functions
-    initialize,
+    initialize = lst(initialize),
     line_break,
     space,
     token,
@@ -183,7 +222,8 @@ create_style_guide <- function(initialize = initialize_attributes,
     # transformer options
     use_raw_indention,
     reindention
-  )
+  ) %>%
+    map(compact)
 }
 
 
@@ -205,6 +245,10 @@ NULL
 
 #' @describeIn reindention Allows to specify which tokens are reindented and
 #'   how.
+#' @examples
+#' style_text("a <- xyz", reindention = specify_reindention(
+#'   regex_pattern = "xyz", indention = 4, comments_only = FALSE)
+#' )
 #' @export
 specify_reindention <- function(regex_pattern = NULL,
                                 indention = 0,
@@ -213,11 +257,13 @@ specify_reindention <- function(regex_pattern = NULL,
     regex_pattern,
     indention,
     comments_only
-)
+  )
 
 #' @describeIn reindention Simple forwarder to
 #' `specify_reindention` with reindention according to the tidyverse style
 #' guide.
+#' @examples
+#' style_text("a <- xyz", reindention = tidyverse_reindention())
 #' @export
 tidyverse_reindention <- function() {
   specify_reindention(
@@ -233,10 +279,13 @@ tidyverse_reindention <- function() {
 #' @param levels A vector with levels.
 #' @param name The name of the character vector to be displayed if the
 #'   construction of the factor fails.
+#' @keywords internal
 character_to_ordered <- function(x, levels, name = substitute(x)) {
   if (!all((x %in% levels))) {
-    stop("all values in ", name, " must be one of the following: ",
-         paste(levels, collapse = ", "), call. = FALSE)
+    stop(
+      "all values in ", name, " must be one of the following: ",
+      paste(levels, collapse = ", "), call. = FALSE
+    )
   }
   factor(x, levels = levels, ordered = TRUE)
 }
@@ -257,11 +306,6 @@ character_to_ordered <- function(x, levels, name = substitute(x)) {
 #'   math_token_spacing = specify_math_token_spacing(zero = "'+'"),
 #'   strict = TRUE
 #' )
-#' style_text(
-#'   "1+1   -3",
-#'   math_token_spacing = tidyverse_math_token_spacing(),
-#'   strict = TRUE
-#' )
 #' @name math_token_spacing
 NULL
 
@@ -269,8 +313,8 @@ NULL
 #'   spacing.
 #' @export
 specify_math_token_spacing <-
-  function(zero = NULL,
-           one = c("'+'", "'-'", "'*'", "'/'", "'^'")) {
+  function(zero = "'^'",
+           one = c("'+'", "'-'", "'*'", "'/'")) {
     assert_tokens(c(one, zero))
     lst(
       one = setdiff(c(math_token, one), zero),
@@ -281,7 +325,21 @@ specify_math_token_spacing <-
 #' @describeIn math_token_spacing Simple forwarder to
 #' `specify_math_token_spacing` with spacing around math tokens according to the
 #' tidyverse style guide.
+#' @examples
+#' style_text(
+#'   "1+1   -3",
+#'   math_token_spacing = tidyverse_math_token_spacing(),
+#'   strict = FALSE
+#' )
+#' style_text(
+#'   "1+1   -3",
+#'   math_token_spacing = tidyverse_math_token_spacing(),
+#'   strict = TRUE
+#' )
 #' @export
 tidyverse_math_token_spacing <- function() {
-  specify_math_token_spacing(one = c("'+'", "'-'", "'*'", "'/'", "'^'"))
+  specify_math_token_spacing(
+    zero = "'^'",
+    one = c("'+'", "'-'", "'*'", "'/'")
+  )
 }
